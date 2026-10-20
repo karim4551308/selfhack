@@ -40,9 +40,8 @@ npx skills add karim4551308/selfhack
 
 ### Claude (claude.ai and the desktop app)
 
-1. Download this repo (**Code → Download ZIP**) and unzip it.
-2. Zip the `skills/selfhack` folder on its own, so the zip contains `selfhack/SKILL.md`.
-3. Upload that zip in Claude's settings, in the Skills section.
+1. Download [`dist/selfhack.zip`](https://github.com/karim4551308/selfhack/raw/main/dist/selfhack.zip).
+2. Upload it in Claude's settings, in the Skills section. Don't unzip it first.
 
 ### Claude Code
 
