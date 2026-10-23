@@ -4,7 +4,7 @@
 
 Selfhack is an AI agent skill that turns your coding agent (Claude, Codex, Antigravity, Claude Code and other tools that support `SKILL.md` skills) into a careful security reviewer for **your own** web apps, APIs and AI features. It is built for vibe-coded and fast-shipped projects that need a real check before going live.
 
-By **Karim** · MIT License · Version 1.0.0 (early release)
+By **Karim** · MIT License · Version 2.0.0
 
 ---
 
@@ -25,6 +25,20 @@ By **Karim** · MIT License · Version 1.0.0 (early release)
 - **Give an honest verdict**: `RELEASE`, `CONDITIONAL RELEASE`, `HOLD`, or `INSUFFICIENT EVIDENCE`.
 
 It maps its checks to current OWASP references: Top 10:2025 (web), API Security Top 10:2023, LLM Top 10:2025, and ASVS 5.0.0.
+
+## What's new in v2.0.0
+
+- **Assessment modes** — `Quick scan` for small diffs, `Standard review` as the new default, `Full assessment` for releases.
+- **7 new web/API checks (WEB-21–27)** — JWT pitfalls, HTTP-layer attacks (request smuggling, cache poisoning, host-header injection), deserialization and language injection (SSTI, pickle, prototype pollution, ReDoS), third-party frontend integrity (SRI, CSP, Magecart), DNS and email identity (SPF/DKIM/DMARC, subdomain takeover), shadow endpoints and exposure, account recovery hijack.
+- **AI supply chain** — slopsquatting, generated-code auditing, model API key leakage, embedding corpus poisoning, prompt leakage via error paths.
+- **Privacy and data protection** — data subject rights, processors, consent, DPIA for AI features, breach notification.
+- **Mobile, desktop, and extension apps** — iOS/Android, Electron/Tauri, Manifest V3 extensions.
+- **Stack-specific presets** — Supabase, Firebase, Next.js, Vite, Vercel/Netlify, Stripe.
+- **Chatbot and automation** — Meta/WhatsApp, Telegram, n8n, Make, Zapier with cost caps and PII retention.
+- **Independent re-check required** before any `RELEASE` or `CONDITIONAL RELEASE` verdict.
+- **Optional free tools** list (gitleaks, semgrep, OSV-Scanner, ZAP, trivy, checkov, etc.).
+
+See the full changelog in [§15 of `SKILL.md`](skills/selfhack/SKILL.md).
 
 ## Install
 
@@ -102,13 +116,13 @@ More example prompts are at the top of [`SKILL.md`](skills/selfhack/SKILL.md).
 
 ## Known limitations
 
-This is an early release. Planned improvements:
+Selfhack is instructions, not a scanner. On large projects the agent may skip files, and results can vary between runs. It cannot certify an app as secure, prove compliance, or replace a professional assessment for high-risk or sensitive systems. Treat its verdicts as a starting point, not a guarantee.
 
-- A lighter default mode and a quick scan for small changes (the current default is thorough and can be slow).
-- Stack-specific checks for common vibe-coding stacks.
-- Coverage for chatbots and automation platforms.
-- A required independent re-check before release verdicts.
-- Mobile and desktop apps are not covered.
+Still planned:
+
+- Splitting `SKILL.md` into smaller reference files so agents follow it more reliably.
+- Field-testing on real apps and recording what the skill catches versus misses.
+- Deeper coverage for container, Kubernetes, and IaC-heavy stacks.
 
 Feedback and pull requests are welcome. Please open an issue if the skill missed something on a real project.
 

@@ -4,12 +4,12 @@ description: Hack your own app first, before someone else does. Security review,
 license: MIT
 metadata:
   author: Karim
-  version: "1.0.0"
+  version: "2.0.0"
 ---
 
 # Application security and red-team skill
 
-Version: 1.0.0 (early release) | Author: Karim | Reference review: 2026-10-18
+Version: 2.0.0 | Author: Karim | Reference review: 2026-10-23
 
 ## Purpose and use
 
@@ -74,6 +74,18 @@ Default recommendation: P2 for an internet-facing production app with accounts o
 
 Separately select an OWASP ASVS verification target: Level 1 for baseline requirements, Level 2 for stronger assurance, or Level 3 for the highest assurance needs. Verify the selected release's exact level definitions and requirements. Use a pinned stable ASVS release, initially 5.0.0; record its version and exact applicable requirement identifiers. Do not claim ASVS conformance from a Top 10 review or from this profile table. A complete claim requires evidence for all applicable requirements at the selected level, including inherited requirements and justified exclusions.
 
+## 2a. Assessment modes
+
+Select a mode at the start of every session before applying a profile. Modes describe the operational scope of this specific session; profiles describe the overall depth target for the project.
+
+| Mode | When to use | Scope per session | Exit evidence | Release gate? |
+| --- | --- | --- | --- | --- |
+| **Quick scan** | Small diff, single feature, bugfix branch | Changed files + direct dependencies + one authorization/injection pass on new routes | Diff reviewed, invariants listed for new endpoints, obvious regressions tested, residual gaps named | No |
+| **Standard review** | Default for day-to-day development on an active project | P1 depth + authorization matrix + secrets scan + supply chain + deployment configuration | Coverage over changed areas, demonstrated findings, deployment checklist, unresolved items with owners | No |
+| **Full assessment** | Pre-release, major architecture change, periodic audit | P2 or P3 as scoped in §2 | Full requirements coverage, authenticated runtime testing, verified fixes, release verdict | Yes |
+
+`Standard review` is the new default for routine use. The previous P2-everywhere default was too heavy for one session and encouraged skipped tests. Any release decision still requires `Full assessment` under P2 or P3.
+
 ## 3. Scope and rules of engagement
 
 Create this record before active testing. Reuse authorization already provided; do not repeatedly request it.
@@ -84,9 +96,10 @@ assessment:
   owner_and_authorizing_party: REQUIRED
   authorization_reference: REQUIRED_FOR_ACTIVE_TESTS
   profile: P2
+  mode: "quick-scan | standard-review | full-assessment"
   asvs_version_and_target: "5.0.0 / proposed Level 2"
   commit_and_build: REQUIRED
-  mode: "review | isolated-test | staging-active | production-observation"
+  environment_mode: "review | isolated-test | staging-active | production-observation"
   allowed_hosts_ports_paths: []
   allowed_repositories_and_cloud_resources: []
   exclusions_and_third_parties: []
@@ -181,6 +194,13 @@ Every row needs applicability, evidence, and a verdict. The tests below are orig
 | WEB-18 | Cryptography | Inspect maintained library usage, key management, randomness and transport settings | Suitable password hashing; secure random tokens; managed key lifecycle; no custom crypto or hard-coded keys |
 | WEB-19 | Supply chain | Review lockfiles, direct/transitive dependencies, provenance, installation scripts and build permissions | Verified packages and sources; reproducible installs; actionable vulnerability triage; minimal build trust |
 | WEB-20 | Auditability | Trigger permitted login/access/role events on fixtures | Security events identify actor, action, target and outcome without leaking secrets; alerts reach responsible owners |
+| WEB-21 | Token and JWT pitfalls | Inspect token issuance, verification, and storage; test `alg:none`, RS256↔HS256 confusion, `kid` traversal/SQLi, weak HMAC secrets (<256 bits), unverified `iss`/`aud`/`exp`, `jwk` header trust | Algorithm pinned on verify; signing keys ≥256 bits with managed rotation; all standard claims validated; `jwk`/`jku` headers ignored; refresh rotation + revocation list; sensitive tokens in `HttpOnly` cookies, not localStorage |
+| WEB-22 | HTTP-layer attacks | Front-end/back-end discrepancy probes for request smuggling (CL.TE, TE.CL, TE.TE) in isolation; test unkeyed-header cache poisoning; host-header injection; open redirects beyond OAuth; `X-Forwarded-For`/`X-Real-IP` rate-limit bypass; response-splitting fixtures | Single interpretation of request framing across proxy chain; cache keys include all security-relevant headers; absolute URL generation does not trust `Host`; redirect targets allowlisted; client IP derived from trusted proxy only |
+| WEB-23 | Deserialization and language injection | SSTI payloads for the engine in use (Jinja2, Twig, EJS, Handlebars, Liquid, Thymeleaf); unsafe deserialization in pickle/YAML/`unserialize`/`BinaryFormatter`/Java gadgets; Node prototype pollution; ReDoS on user-controlled regex; timing-unsafe comparison for secrets | Templates render data not code; deserializers use safe/allowlisted types; `Object.freeze`/null-prototype on parsed input; input-bounded regex or re2; constant-time compare for tokens/HMACs |
+| WEB-24 | Third-party frontend integrity | Review `<script>` tags on auth/payment/admin pages, tag-manager payloads, `postMessage` listeners, iframe policies, frontend lockfile | SRI hashes on all third-party scripts; CSP `script-src`/`connect-src` allowlists; `postMessage` origin validation; iframes `sandbox` + `allow` scoped; no untrusted script on sensitive pages; dependency-confusion defenses on scoped packages |
+| WEB-25 | DNS and email identity | Enumerate authoritative DNS, TLS cert transparency, dangling CNAMEs; check SPF/DKIM/DMARC on all sending domains; test MX wildcards | SPF with explicit terminator (`-all` or deliberate `~all`); DKIM selectors rotated; DMARC at `quarantine` or `reject` with aggregate reporting; no dangling CNAMEs to Vercel/Netlify/Heroku/GitHub Pages/S3/Azure; DNSSEC enabled where supported |
+| WEB-26 | Shadow endpoints and exposure | Probe `/.git/`, `/.env`, `/.DS_Store`, `/backup.sql`, `/admin`, `/debug`, `/actuator`, source-map URLs, `__NEXT_DATA__`; check framework debug flags on prod | No VCS or dotfile exposure on web root; source maps absent or access-controlled on prod; `DEBUG`/development mode off in prod; admin and ops consoles behind auth and network restrictions; stale preview deployments do not share prod credentials |
+| WEB-27 | Account recovery hijack | Test email plus-aliasing and dot-variant collisions (Gmail), unicode confusables in email, SMS/SIM-swap resistance, MFA enrollment during password reset, backup-code reuse, support "login as user" flow | Email normalized before uniqueness check; MFA preserved across reset or re-enrollment is explicit; backup codes single-use; SMS not sole second factor for high-impact accounts; support impersonation audited, consented, and session-bounded |
 
 Additional API invariants: never trust a client-supplied owner or tenant identifier; serialize only permitted response fields; allowlist writable properties; authorize batch members individually; validate vendor responses as untrusted input; retire obsolete versions; document every exposed endpoint. Where appropriate, verify conditional requests and optimistic locking for state changes.
 
@@ -188,16 +208,16 @@ Additional API invariants: never trust a client-supplied owner or tenant identif
 
 | Category | Primary matrix coverage |
 | --- | --- |
-| A01 Broken Access Control | WEB-04, 05, 09, 10, 16 |
-| A02 Security Misconfiguration | WEB-08, 13, 14; deployment review |
-| A03 Software Supply Chain Failures | WEB-19; build and CI review |
-| A04 Cryptographic Failures | WEB-02, 18 |
-| A05 Injection | WEB-06, 07 |
+| A01 Broken Access Control | WEB-04, 05, 09, 10, 16, 27 |
+| A02 Security Misconfiguration | WEB-08, 13, 14, 24, 26; deployment review |
+| A03 Software Supply Chain Failures | WEB-19, 24; build and CI review |
+| A04 Cryptographic Failures | WEB-02, 18, 21 |
+| A05 Injection | WEB-06, 07, 22, 23 |
 | A06 Insecure Design | Threat model; WEB-11, 12 |
-| A07 Authentication Failures | WEB-01, 02, 03 |
-| A08 Software or Data Integrity Failures | WEB-15, 19 |
-| A09 Security Logging and Alerting Failures | WEB-20; operational checks |
-| A10 Mishandling of Exceptional Conditions | WEB-17; recovery checks |
+| A07 Authentication Failures | WEB-01, 02, 03, 21, 27 |
+| A08 Software or Data Integrity Failures | WEB-15, 19, 23, 24 |
+| A09 Security Logging and Alerting Failures | WEB-20, 25; operational checks |
+| A10 Mishandling of Exceptional Conditions | WEB-17, 22; recovery checks |
 
 Source: [OWASP Top 10:2025](https://top10.owasp.org/2025/).
 
@@ -206,15 +226,15 @@ Source: [OWASP Top 10:2025](https://top10.owasp.org/2025/).
 | Category | Primary matrix coverage |
 | --- | --- |
 | API1 Broken Object Level Authorization | WEB-04, 05 |
-| API2 Broken Authentication | WEB-01, 02, 03 |
+| API2 Broken Authentication | WEB-01, 02, 03, 21, 27 |
 | API3 Broken Object Property Level Authorization | WEB-04, 13 |
-| API4 Unrestricted Resource Consumption | WEB-12, 16 |
+| API4 Unrestricted Resource Consumption | WEB-12, 16, 22 |
 | API5 Broken Function Level Authorization | WEB-04, 16 |
 | API6 Unrestricted Access to Sensitive Business Flows | WEB-11, 12 |
 | API7 Server Side Request Forgery | WEB-10 |
-| API8 Security Misconfiguration | WEB-08, 13; deployment review |
-| API9 Improper Inventory Management | Inventory; WEB-16 |
-| API10 Unsafe Consumption of APIs | WEB-15, 17 |
+| API8 Security Misconfiguration | WEB-08, 13, 26; deployment review |
+| API9 Improper Inventory Management | Inventory; WEB-16, 26 |
+| API10 Unsafe Consumption of APIs | WEB-15, 17, 24 |
 
 Source: [OWASP API Security Top 10:2023](https://api-security.owasp.org/editions/2023/en/0x11-t10/).
 
@@ -241,6 +261,17 @@ For agents, also verify tool argument schemas, tool-result injection, delegated 
 
 Record model/provider/version when available, parameters, sanitized input, corpus snapshot, tool definitions and outputs. Repeat meaningful adversarial scenarios across a documented number of runs because behavior can vary. Report the observed failure count and trial count; zero observed failures does not prove immunity. Retest after model, prompt, tool or retrieval changes.
 
+## 7a. AI-specific supply chain and generated code
+
+AI assistants frequently produce code that references packages, APIs, or payloads that do not exist or should not be trusted. Treat generated code as untrusted input until reviewed.
+
+- **Slopsquatting** — hallucinated package names in generated code match squatted packages on public registries. Before any `npm install`, `pip install`, `cargo add`, or equivalent of an AI-suggested name, verify the package exists on the expected registry, check publisher and download history, and prefer pinned versions from a reviewed lockfile.
+- **Generated code auditing** — any code produced by an LLM or coding agent passes §6 checks before execution. In particular, inspect it for SQL/command injection, deserialization of untrusted input, hard-coded secrets, overly broad permissions, and silently disabled validation. Do not auto-execute generated shell, SQL, or `eval`-style payloads.
+- **Model API key leakage** — scan error traces, server logs, client bundles, source maps, and public repos for provider API keys (OpenAI, Anthropic, Google, Mistral, etc.). Verify server-only usage. Separate keys per environment with scoped quotas.
+- **Embedding corpus poisoning via public PRs** — if the project ingests community contributions into a retrieval corpus, enforce human review before ingestion, record provenance per document, and support unindexing on review.
+- **Prompt leakage via error paths** — model exceptions, tool failures, retries, and request-logging middleware must not echo full system prompts, retrieved documents, or tool arguments to end users or external log sinks.
+- **Agent action replay** — if the agent writes code or performs mutations, record the exact prompt, tool call, and diff. A later audit should be able to attribute every change to a specific session and principal.
+
 ## 8. Operational and deployment checks
 
 - **Exposure:** Inventory DNS, TLS termination, origin access, public buckets/databases, preview deployments, admin consoles, debug routes and stale deployments. Confirm production uses intended configuration.
@@ -254,6 +285,29 @@ Record model/provider/version when available, parameters, sanitized input, corpu
 - **External effects:** Validate sandbox/live provider separation, webhook endpoints, allowed outbound destinations, payment reconciliation, message budgets and emergency spend controls.
 
 Record configuration evidence separately from runtime proof. If cloud access or production evidence is unavailable, mark the corresponding checks BLOCKED or NOT RUN; do not infer deployed safety from local files.
+
+## 8a. Privacy and data protection
+
+This section is operational guidance, not legal advice. Jurisdiction-specific duties (GDPR, UK GDPR, CCPA/CPRA, LGPD, PDPL, DIFC DPL, etc.) require counsel. The agent must flag privacy obligations, not interpret them.
+
+- **Data subject rights** — verify functional paths for access, portability/export, rectification, deletion, and restriction. For deletion specifically, trace removal through: primary datastore, read replicas, backups (per the documented retention clock), caches, search indexes, vector/embedding stores, analytics pipelines, email/SMS providers, and every third-party processor. A deletion that only clears the primary row is incomplete.
+- **Processors and sub-processors** — enumerate every third party receiving personal data (model providers, payment, analytics, email/SMS, support tools, hosting). Confirm a Data Processing Agreement is in force, record data residency, keep a sub-processor list reviewable by users where required.
+- **Consent and cookies** — categorize cookies and client-side storage (strictly necessary, functional, analytics, marketing). Verify consent is specific, informed, revocable, and that withdrawal propagates to all trackers, not only the banner UI.
+- **DPIA for AI features** — document data flows into model APIs, provider retention and training opt-out, legal basis, special-category data handling, and human review of consequential decisions.
+- **Breach notification readiness** — identify who decides whether a breach is notifiable, under which clock (GDPR 72 hours from awareness), how affected subjects are enumerated, and keep template communications ready.
+- **Minimization and purpose limitation** — challenge every retained field: is it necessary for the stated purpose? If not, stop collecting it or shorten its retention.
+
+Where the project operates across jurisdictions, record each applicable regime and its specific obligations rather than assuming one framework covers all.
+
+## 8b. Mobile, desktop, and extension apps
+
+Apply only when a client-side mobile, desktop, or browser-extension application exists. Server-side obligations in §1–§8a still apply fully.
+
+- **Mobile (iOS/Android)** — store secrets in Keychain (iOS) / Keystore (Android) with appropriate access controls; biometric gating supports re-authentication, not primary authentication; validate deep links via Universal Links / App Links, not scheme matching alone; certificate pinning or App Attest / Play Integrity for sensitive endpoints; audit exported Android components (activities, services, broadcast receivers, content providers) and iOS URL schemes for insecure IPC; disable screenshots on sensitive screens; sanitize pasteboard behavior; `WebView` with `JavaScriptEnabled` only when needed, no `file://` access, no `addJavascriptInterface` to untrusted content; `android:debuggable=false` and iOS release provisioning in prod; treat obfuscation as anti-piracy, not as a security boundary.
+- **Desktop (Electron, Tauri, native)** — Electron: `contextIsolation` on, `nodeIntegration` off, `sandbox` on where supported, preload script is the only privileged surface; auto-updater verifies signatures and update origin; register protocol handlers minimally and validate every argument; `webSecurity` not disabled; same-origin policy applies to local files; audit native modules and prebuilt binaries for provenance.
+- **Browser extension** — Manifest V3 with the minimum `permissions` and `host_permissions`; isolate content scripts from page scripts; verify every `chrome.runtime.onMessage` sender; no `eval` or `unsafe-inline` in extension CSP; use `web_accessible_resources` sparingly; verify the extension's update channel and publisher identity; rotate signing keys only via the store workflow.
+
+Record which client surfaces exist, which were tested, and which were marked NOT APPLICABLE.
 
 ## 9. Tool selection and CI/CD
 
@@ -271,6 +325,79 @@ Choose available stack-appropriate tools; tools are optional means, not an assur
 Protect CI itself: least-privilege tokens; pinned third-party actions or equivalent immutable references; isolated untrusted pull requests; no privileged execution of fork-controlled code; protected branches/environments; review for deployment workflow changes; short-lived federated credentials where supported. Cache and artifact reuse must not introduce untrusted executable content.
 
 Store sanitized machine-readable results if supported, alongside a human report. Define scan timeout and failure behavior. A crashed, unauthenticated or incomplete scanner is not a clean scan. Suppressions require rationale, owner, scope and expiry. Reassess reachable impact when triaging dependency vulnerabilities; do not dismiss severe exposure solely because a scanner lacks a proof of concept.
+
+## 9a. Stack-specific checks (vibe-coding presets)
+
+Short required-check lists for stacks commonly used in vibe-coded or small-team projects. Each item is a check, not a chapter; apply the main matrix (§6) on top.
+
+**Supabase**
+- Row Level Security enabled on every table with real policies, not permissive `USING (true)`.
+- `service_role` key only on servers and edge functions; never shipped to the client.
+- Storage bucket policies deny public read by default; signed URLs for private assets with bounded expiry.
+- Auth email templates reviewed for open-redirect in the magic-link URL.
+- Edge functions have scoped secrets and no implicit elevated role.
+
+**Firebase**
+- Firestore and Realtime Database rules deny-by-default; no `allow read, write: if true`.
+- App Check enabled for client access; Admin SDK only on trusted servers.
+- Custom claims verified server-side on sensitive operations; client claims never trusted.
+- Cloud Functions runtime permissions scoped; no default compute service account.
+
+**Next.js (App Router)**
+- Server Actions authorize on the server; the "it's a mutation so it's safe" assumption is wrong.
+- Audit every `NEXT_PUBLIC_*` variable — anything prefixed is in the browser bundle.
+- Middleware matcher actually covers protected paths; verify with a direct URL test.
+- Cookies set via `cookies()` are `HttpOnly` + `Secure` + `SameSite` where appropriate.
+- No server-only data leaked into client components via props or `use client` boundaries.
+- Image optimizer configured with an explicit `remotePatterns` allowlist to prevent SSRF.
+
+**Vite / SPA**
+- No secrets in `import.meta.env.VITE_*` — they are shipped to the client.
+- Sensitive APIs behind a backend-for-frontend, not called from the browser with a provider key.
+- Source maps not deployed to production, or served only to authorized paths.
+
+**Vercel / Netlify**
+- Environment variables separated by target (preview vs production); preview secrets differ from prod.
+- Preview deployment access controlled (password or SSO) when they touch real data or integrations.
+- Serverless function timeout, memory, and concurrency bounded; cold-start secret exposure reviewed.
+- Branch protection and deploy hooks restricted; webhook URLs not exposing secrets in query strings.
+
+**Stripe (and payment providers)**
+- Webhook signature verified with the provider SDK using constant-time compare; raw body preserved.
+- Idempotency keys on every mutating request; retries are safe.
+- Server owns the price lookup; never trust a client-supplied amount or currency.
+- PCI SAQ scope minimized via hosted fields, Checkout, or Payment Element — not raw card capture.
+- 3DS applied where mandated (SCA regions); refund and chargeback workflows monitored for abuse.
+- Replay window on webhook timestamps; expired events rejected.
+
+## 9b. Chatbot and automation workflows
+
+Covers chatbots on Meta/WhatsApp/Instagram/Telegram and automation stacks (n8n, Make, Zapier). Treat every inbound message as untrusted input.
+
+- **Webhook authenticity** — Meta app secret HMAC on `X-Hub-Signature-256`, Telegram `secret_token`, provider-specific signatures on every call. Reject unsigned or stale events.
+- **Prompt injection via customer messages** — the user controls the message; the message does not control the agent. Isolate instructions from data. No destructive tool execution on free-form text without explicit, out-of-band confirmation.
+- **Cost caps** — per-conversation token limits, per-user daily caps, account-level daily and monthly spend ceilings, alerts at defined thresholds, model fallback or hard-stop on quota exhaustion. A loop with no cap is a billing incident waiting to happen.
+- **Conversation data retention** — document what is stored (user IDs, phone numbers, message bodies, media), where, for how long, who can access it, and the deletion path on user request. Confirm provider retention policy (OpenAI zero-retention or equivalent) is actually in effect for your account tier.
+- **n8n / Make / Zapier hardening** — credentials scoped per workflow; no plaintext secrets in node parameters; webhook URLs unguessable or signed; workflow definitions version-controlled; execution logs scrubbed of PII; shared instances isolated by tenant.
+- **Multi-tenant automation** — tenant identifier on every webhook payload verified server-side against the signed envelope; no cross-tenant leakage via shared workflow state, shared vector memory, or shared conversation threads.
+- **Media handling** — inbound images, audio, and documents are untrusted. Scan for malware where feasible, strip metadata, and never pass raw blobs into execution paths.
+
+## 9c. Optional free tools
+
+A short, non-exhaustive list of free tools the agent may suggest the user run manually. Tools are optional means; results require triage. The agent must not run these against systems the user has not authorized.
+
+- **Secrets:** `gitleaks`, `trufflehog`
+- **SAST (general):** `semgrep` with community rules
+- **SAST (language-specific):** `bandit` (Python), `brakeman` (Rails), ESLint security plugins, `gosec` (Go), `cargo-audit` (Rust)
+- **Dependencies:** `npm audit`, `pip-audit`, `osv-scanner`, GitHub Dependabot, Renovate
+- **DAST (owned apps only):** OWASP ZAP baseline scan, `nuclei` with safe templates
+- **Container:** `trivy`, `grype`, `dockle`
+- **Infrastructure as code:** `checkov`, `tfsec`, `kics`
+- **DNS / subdomain takeover:** `subjack`, `dnstwist`, `amass` (passive mode)
+- **Headers / TLS:** `testssl.sh`, Mozilla Observatory, `sslyze`
+- **Mobile:** `MobSF` (self-hosted), platform-native linters
+
+Pin versions, review tool documentation, and prefer isolated environments. Scanner output is a lead, not a finding, until validated.
 
 ## 10. Evidence and severity
 
@@ -306,10 +433,12 @@ Risk acceptance requires a named authorized owner, rationale, affected scope, co
 
 ## 12. Release recommendation
 
-- **RELEASE:** Required applicable checks completed, no unresolved critical/high findings, mandatory invariants verified, and residual risks owned.
-- **CONDITIONAL RELEASE:** Only explicitly accepted, time-bounded risks remain, mandatory boundaries hold, and compensating controls have evidence. State the conditions and approving owner.
+**Hard requirement — independent re-check:** Before issuing a `RELEASE` or `CONDITIONAL RELEASE` verdict, the assessment must include either (a) a second independent session with fresh context and no shared conclusions that reaches the same verdict, or (b) a documented human reviewer sign-off naming the responsible party. Without this, the verdict defaults to `INSUFFICIENT EVIDENCE`. One agent's confidence in its own work is not evidence.
+
+- **RELEASE:** Required applicable checks completed, no unresolved critical/high findings, mandatory invariants verified, residual risks owned, and the independent re-check above is in place.
+- **CONDITIONAL RELEASE:** Only explicitly accepted, time-bounded risks remain, mandatory boundaries hold, compensating controls have evidence, and the independent re-check is in place. State the conditions and approving owner.
 - **HOLD:** Confirmed unacceptable exposure, unresolved critical/high findings without authorized exception, exposed live credentials, or broken mandatory invariants.
-- **INSUFFICIENT EVIDENCE:** Required environments, identities, tests or deployment evidence are unavailable. Recommend against release until the named gaps are resolved; do not describe this as a pass.
+- **INSUFFICIENT EVIDENCE:** Required environments, identities, tests, deployment evidence, or the independent re-check are unavailable. Recommend against release until the named gaps are resolved; do not describe this as a pass.
 
 Independent specialist review may be needed for P3 systems, custom cryptography, complex identity protocols or consequential sensitive workflows. Name the limitation without claiming the specialist review happened. This assessment does not establish legal compliance or certification.
 
@@ -323,7 +452,8 @@ Date/timezone:
 Reviewer:
 Commit/build/artifact and deployment:
 Authorization reference and scope:
-Profile and pinned standards/requirements:
+Profile, mode and pinned standards/requirements:
+Independent re-check: [reviewer / session reference, or NONE]
 Recommendation: RELEASE | CONDITIONAL RELEASE | HOLD | INSUFFICIENT EVIDENCE
 
 ## Decision summary
@@ -409,7 +539,8 @@ Conditions that revoke acceptance:
 ### Short completion message
 
 ```text
-Assessed [scope/build] using [profile]. Recommendation: [verdict].
+Assessed [scope/build] using [profile/mode]. Recommendation: [verdict].
+Independent re-check: [reference or NONE].
 Confirmed findings: [counts by severity]. Verified fixes: [IDs].
 Mandatory checks remaining: [gaps and owners].
 Evidence/report: [locations]. Next action: [specific action and owner].
@@ -425,6 +556,25 @@ Use official sources to verify edition changes, requirement IDs, protocol guidan
 - [OWASP Web Top 10:2025](https://top10.owasp.org/2025/) — web risk awareness mapping.
 - [OWASP API Security Top 10:2023](https://api-security.owasp.org/editions/2023/en/0x11-t10/) — API risk awareness mapping.
 - [OWASP LLM Top 10:2025](https://genai.owasp.org/llm-top-10/) — LLM risk awareness mapping.
+- [OWASP MASVS and MASTG](https://mas.owasp.org/) — mobile application verification and testing.
 - [FIRST CVSS](https://www.first.org/cvss/) — official scoring methodology.
 
 Maintain this skill after demonstrated assessment gaps, framework changes and material architecture changes. Prefer specific corrections over accumulating generic checks. Preserve the distinction between planned, reviewed, executed, demonstrated and verified.
+
+## 15. Changelog
+
+### v2.0.0 (2026-10-23)
+- Added §2a Assessment modes: `Quick scan`, `Standard review` (new default), `Full assessment`.
+- Added WEB-21 through WEB-27 to the core matrix: JWT pitfalls, HTTP-layer attacks (smuggling, cache poisoning, host-header injection), deserialization and language injection (SSTI, pickle, prototype pollution, ReDoS), third-party frontend integrity (SRI, CSP, Magecart), DNS and email identity (SPF/DKIM/DMARC, subdomain takeover), shadow endpoints and exposure, account recovery hijack.
+- Updated OWASP 2025 and API 2023 mapping tables to include the new WEB rows.
+- Added §7a AI-specific supply chain and generated code (slopsquatting, generated-code auditing, model API key leakage, embedding corpus poisoning, prompt leakage via error paths).
+- Added §8a Privacy and data protection (data subject rights, processors, consent, DPIA for AI, breach notification).
+- Added §8b Mobile, desktop, and extension apps.
+- Added §9a Stack-specific checks (Supabase, Firebase, Next.js, Vite, Vercel/Netlify, Stripe).
+- Added §9b Chatbot and automation workflows (Meta/WhatsApp, Telegram, n8n, Make, Zapier).
+- Added §9c Optional free tools.
+- §12: hard requirement for independent re-check before any RELEASE verdict.
+- Added OWASP MASVS/MASTG reference in §14.
+
+### v1.0.0 (2026-10-18)
+- Initial public release.
